@@ -2,8 +2,9 @@
   "version": 2,
   "builds": [
     {
-      "src": "server/index.js",
-      "use": "@vercel/node"
+      "src": "server/package.json",
+      "use": "@vercel/node",
+      "config": { "installCommand": "npm install" }
     },
     {
       "src": "client/package.json",
