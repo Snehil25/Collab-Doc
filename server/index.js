@@ -1,3 +1,5 @@
+// server/index.js (FINAL VERSION with enhanced logging)
+
 require('dotenv').config();
 
 const express = require('express');
@@ -6,41 +8,27 @@ const { Server } = require("socket.io");
 const cors = require('cors');
 const supabase = require('./db');
 const authMiddleware = require('./middleware/auth');
-const jwt = require('jsonwebtoken');
-
+const jwt = 'jsonwebtoken';
 
 const app = express();
 
+// --- CORS Configuration ---
 const allowedOrigins = [
   'http://localhost:3000',
-  'https://collab-doc-snehils-projects-4954fa41.vercel.app' // production
+  process.env.FRONTEND_URL 
 ];
 
 const corsOptions = {
   origin: (origin, callback) => {
-    console.log("Incoming request origin:", origin);
-
-    if (!origin) return callback(null, true); // allow server-to-server or curl
-
-    const isAllowed =
-      allowedOrigins.includes(origin) ||
-      origin.endsWith('.vercel.app'); // ✅ allow all preview deploys
-
-    if (isAllowed) {
-      return callback(null, true);
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('The CORS policy for this site does not allow access from the specified Origin.'));
     }
-
-    const msg = `CORS error: ${origin} not allowed`;
-    console.error(msg);
-    return callback(new Error(msg), false);
-  },
-  credentials: true // if you're using cookies or auth headers
+  }
 };
 
 app.use(cors(corsOptions));
-
-
-
 app.use(express.json());
 
 const server = http.createServer(app);
@@ -49,12 +37,14 @@ const io = new Server(server, {
     cors: corsOptions
 });
 
+// --- API Routes ---
 app.use('/api/auth', require('./routes/auth'));
 
 app.get('/', (req, res) => {
   res.send('Backend server is live and running!');
 });
 
+// ... other API routes ...
 app.get("/api/documents", authMiddleware, async (req, res) => {
     try {
         const { data, error } = await supabase.rpc('get_documents_for_user', {
@@ -98,20 +88,11 @@ app.post("/api/documents/:id/share", authMiddleware, async (req, res) => {
             user_id_param: ownerId
         });
 
-        if (rpcError) {
-            console.error('[SHARE] RPC error:', rpcError);
-            return res.status(500).json({ msg: 'Server error checking document permissions.' });
-        }
+        if (rpcError) throw rpcError;
 
         const targetDoc = accessibleDocs.find(doc => doc.id === documentId);
-
-        if (!targetDoc) {
-            return res.status(404).json({ msg: 'Document not found.' });
-        }
-
-        if (targetDoc.owner_email !== req.user.email) {
-            return res.status(403).json({ msg: 'Only the document owner can share.' });
-        }
+        if (!targetDoc) return res.status(404).json({ msg: 'Document not found.' });
+        if (targetDoc.owner_email !== req.user.email) return res.status(403).json({ msg: 'Only the document owner can share.' });
 
         const adminUsersUrl = `${process.env.SUPABASE_URL}/auth/v1/admin/users`;
         const adminAuthHeaders = {
@@ -120,29 +101,20 @@ app.post("/api/documents/:id/share", authMiddleware, async (req, res) => {
         };
 
         const response = await fetch(adminUsersUrl, { headers: adminAuthHeaders });
-        if (!response.ok) {
-            throw new Error('Could not fetch users from Supabase admin API.');
-        }
+        if (!response.ok) throw new Error('Could not fetch users from Supabase admin API.');
 
         const { users } = await response.json();
         const collaboratorUser = users.find(user => user.email.toLowerCase() === collaboratorEmail.toLowerCase());
         
-        if (!collaboratorUser) {
-            return res.status(404).json({ msg: 'User to share with not found.' });
-        }
-        
-        if (collaboratorUser.id === ownerId) {
-            return res.status(400).json({ msg: 'You cannot share a document with yourself.' });
-        }
+        if (!collaboratorUser) return res.status(404).json({ msg: 'User to share with not found.' });
+        if (collaboratorUser.id === ownerId) return res.status(400).json({ msg: 'You cannot share a document with yourself.' });
 
         const { error: shareError } = await supabase
             .from('document_collaborators')
             .insert({ document_id: documentId, user_id: collaboratorUser.id });
         
         if (shareError) {
-            if (shareError.code === '23505') {
-                return res.status(400).json({ msg: 'Document already shared with this user.' });
-            }
+            if (shareError.code === '23505') return res.status(400).json({ msg: 'Document already shared with this user.' });
             throw shareError;
         }
 
@@ -153,11 +125,14 @@ app.post("/api/documents/:id/share", authMiddleware, async (req, res) => {
     }
 });
 
+
+// --- Socket.IO Logic with Enhanced Logging ---
+
 io.use((socket, next) => {
     const token = socket.handshake.auth.token;
     if (!token) return next(new Error('Authentication error: No token provided'));
     try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_default_jwt_secret');
+        const decoded = require('jsonwebtoken').verify(token, process.env.JWT_SECRET);
         socket.user = decoded.user;
         next();
     } catch (err) {
@@ -173,42 +148,41 @@ io.on("connection", (socket) => {
             const { data, error } = await supabase.rpc('get_documents_for_user', {
                 user_id_param: socket.user.id
             });
-
             if (error) throw error;
 
             const hasAccess = data.some(doc => doc.id === documentId);
             if (!hasAccess) {
-                socket.emit('auth-error', { message: 'You do not have permission to access this document.' });
-                return;
+                return socket.emit('auth-error', { message: 'Permission denied.' });
             }
             
             const { data: docContent, error: contentError } = await supabase
-                .from('documents')
-                .select('content, history')
-                .eq('id', documentId)
-                .single();
-            
+                .from('documents').select('content, history').eq('id', documentId).single();
             if (contentError) throw contentError;
 
             socket.join(documentId);
-            console.log(`Socket ${socket.id} joined room ${documentId}`);
             socket.emit("load-document", docContent);
-
         } catch (err) {
-            console.error(`Error fetching document ${documentId}:`, err);
+            // ENHANCED LOGGING
+            console.error(`[ERROR] Failed to get document ${documentId} for user ${socket.user.email}.`);
+            console.error('Error Details:', err);
         }
-    });
-
-    socket.on("send-changes", (delta) => {
-        socket.broadcast.to(delta.documentId).emit("receive-changes", delta.content);
     });
 
     socket.on("save-document", async ({ documentId, content }) => {
         try {
+            // ADDED SECURITY CHECK
+            const { data, error: rpcError } = await supabase.rpc('get_documents_for_user', {
+                user_id_param: socket.user.id
+            });
+            if (rpcError) throw rpcError;
+            if (!data.some(doc => doc.id === documentId)) {
+                return socket.emit('auth-error', { message: 'Permission denied to save.' });
+            }
+
             const { data: currentDoc, error: fetchError } = await supabase
                 .from('documents').select('history').eq('id', documentId).single();
-
             if (fetchError) throw fetchError;
+
             let history = currentDoc.history || [];
             history.unshift(content);
             if (history.length > 20) history = history.slice(0, 20);
@@ -220,8 +194,14 @@ io.on("connection", (socket) => {
             
             io.in(documentId).emit("document-saved", { history });
         } catch (err) {
-            console.error(`Error saving document ${documentId}:`, err);
+            // ENHANCED LOGGING
+            console.error(`[ERROR] Failed to save document ${documentId} for user ${socket.user.email}.`);
+            console.error('Error Details:', err);
         }
+    });
+
+    socket.on("send-changes", (delta) => {
+        socket.broadcast.to(delta.documentId).emit("receive-changes", delta.content);
     });
 
     socket.on("disconnect", () => {
