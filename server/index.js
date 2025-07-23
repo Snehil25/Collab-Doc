@@ -12,24 +12,29 @@ const jwt = require('jsonwebtoken');
 const app = express();
 
 const allowedOrigins = [
-  'http://localhost:3000', 
-  process.env.FRONTEND_URL 
+  'http://localhost:3000',
+  'https://collab-doc-snehils-projects-4954fa41.vercel.app'
 ];
 
-console.log("Allowed Origins:", allowedOrigins);
 const corsOptions = {
-  origin: function (origin, callback) {
+  origin: (origin, callback) => {
     console.log("Incoming request origin:", origin);
 
-    if (!origin || allowedOrigins.some(o => origin.startsWith(o))) {
+    if (!origin) return callback(null, true);
+
+    // Allow all *.vercel.app subdomains
+    if (
+        allowedOrigins.includes(origin) ||
+        origin.endsWith('.snehils-projects-4954fa41.vercel.app')
+        )
+        {
       return callback(null, true);
     }
 
     const msg = `CORS error: ${origin} not allowed`;
     console.error(msg);
     return callback(new Error(msg), false);
-  },
-  credentials: true, 
+  }
 };
 
 
