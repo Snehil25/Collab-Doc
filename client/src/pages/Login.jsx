@@ -10,15 +10,17 @@ function Login() {
     const { email, password } = formData;
 
     const onChange = e => setFormData({ ...formData, [e.target.name]: e.target.value });
-
+    
+    const API_BASE = process.env.REACT_APP_API_URL;
     const onSubmit = async e => {
         e.preventDefault();
         try {
-            const res = await fetch('/api/auth/signin', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(formData),
+            const res = await fetch(`${API_BASE}/api/auth/signin`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(formData),
             });
+
             const data = await res.json();
             if (!res.ok) throw new Error(data.msg || 'Failed to login');
             // The login function from AuthContext will handle navigation

@@ -6,7 +6,8 @@ const { Server } = require("socket.io");
 const cors = require('cors');
 const supabase = require('./db');
 const authMiddleware = require('./middleware/auth');
-const jwt = 'jsonwebtoken';
+const jwt = require('jsonwebtoken');
+
 
 const app = express();
 
@@ -145,7 +146,7 @@ io.use((socket, next) => {
     const token = socket.handshake.auth.token;
     if (!token) return next(new Error('Authentication error: No token provided'));
     try {
-        const decoded = require('jsonwebtoken').verify(token, process.env.JWT_SECRET || 'your_default_jwt_secret');
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_default_jwt_secret');
         socket.user = decoded.user;
         next();
     } catch (err) {

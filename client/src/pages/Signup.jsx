@@ -10,7 +10,8 @@ function Signup() {
     const { email, password, password2 } = formData;
 
     const onChange = e => setFormData({ ...formData, [e.target.name]: e.target.value });
-
+    
+    const API_BASE = process.env.REACT_APP_API_URL;
     const onSubmit = async e => {
         e.preventDefault();
         if (password !== password2) {
@@ -18,10 +19,10 @@ function Signup() {
             return;
         }
         try {
-            const res = await fetch('/api/auth/signup', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, password }),
+            const res = await fetch(`${API_BASE}/api/auth/signup`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password }),
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.msg || 'Failed to sign up');
