@@ -13,12 +13,12 @@ router.post('/signup', async (req, res) => {
     });
 
     if (error) throw error;
-    if (!user) throw new Error("Signup failed, user not returned.");
+    if (!user) throw new Error("Signup failed, user not returned by Supabase.");
 
     res.status(201).json({ msg: 'User registered successfully. Please sign in.' });
   } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Server error');
+    console.error("SIGNUP ERROR:", err.message);
+    res.status(500).json({ msg: err.message || 'Server error during signup.' });
   }
 });
 
@@ -31,7 +31,7 @@ router.post('/signin', async (req, res) => {
         });
 
         if (error) throw error;
-        if (!data.session) throw new Error("Signin failed, no session returned.");
+        if (!data.session) throw new Error("Signin failed, no session returned by Supabase.");
 
         const payload = {
             user: {
@@ -42,16 +42,16 @@ router.post('/signin', async (req, res) => {
 
         jwt.sign(
             payload,
-            process.env.JWT_SECRET || 'your_default_jwt_secret',
-            { expiresIn: 3600 }, 
+            process.env.JWT_SECRET, 
+            { expiresIn: 3600 },
             (err, token) => {
                 if (err) throw err;
                 res.json({ token });
             }
         );
     } catch (err) {
-        console.error(err.message);
-        res.status(400).json({ msg: 'Invalid credentials' });
+        console.error("SIGNIN ERROR:", err.message);
+        res.status(400).json({ msg: err.message || 'Invalid credentials' });
     }
 });
 
