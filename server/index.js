@@ -18,15 +18,20 @@ const allowedOrigins = [
 
 console.log("Allowed Origins:", allowedOrigins);
 const corsOptions = {
-  origin: (origin, callback) => {
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.indexOf(origin) === -1) {
-      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
-      return callback(new Error(msg), false);
+  origin: function (origin, callback) {
+    console.log("Incoming request origin:", origin);
+
+    if (!origin || allowedOrigins.some(o => origin.startsWith(o))) {
+      return callback(null, true);
     }
-    return callback(null, true);
-  }
+
+    const msg = `CORS error: ${origin} not allowed`;
+    console.error(msg);
+    return callback(new Error(msg), false);
+  },
+  credentials: true, 
 };
+
 
 app.use(cors(corsOptions));
 
