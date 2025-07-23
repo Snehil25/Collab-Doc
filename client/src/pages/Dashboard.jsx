@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from './AuthContext';
-import ShareModal from '../components/ShareModal'; 
+import ShareModal from '../components/ShareModal';
+
+const API_URL = process.env.REACT_APP_API_URL;
 
 function Dashboard() {
   const [documents, setDocuments] = useState([]);
@@ -15,7 +17,7 @@ function Dashboard() {
   useEffect(() => {
     const fetchDocuments = async () => {
       try {
-        const response = await fetch('/api/documents', {
+        const response = await fetch(`${API_URL}/api/documents`, {
           headers: authHeader()
         });
         if (!response.ok) {
@@ -40,7 +42,7 @@ function Dashboard() {
 
   const createNewDocument = async () => {
     try {
-        const response = await fetch('/api/documents', {
+        const response = await fetch(`${API_URL}/api/documents`, {
             method: 'POST',
             headers: authHeader()
         });

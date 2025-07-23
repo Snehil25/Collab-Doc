@@ -3,6 +3,8 @@ import { useParams, Link } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import { useAuth } from './AuthContext';
 
+const SERVER_URL = process.env.REACT_APP_API_URL;
+
 function Editor() {
   const { documentId } = useParams();
   const [socket, setSocket] = useState(null);
@@ -13,7 +15,8 @@ function Editor() {
 
   useEffect(() => {
     if (!token) return; 
-    const s = io({ auth: { token } });
+
+    const s = io(SERVER_URL, { auth: { token } });
     setSocket(s);
 
     s.on('connect', () => setStatus("Connected"));
