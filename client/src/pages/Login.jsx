@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 
 function Login() {
     const [formData, setFormData] = useState({ email: '', password: '' });
     const [error, setError] = useState('');
     const { login } = useAuth();
-    const navigate = useNavigate();
 
     const { email, password } = formData;
 
@@ -22,6 +21,7 @@ function Login() {
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.msg || 'Failed to login');
+            // The login function from AuthContext will handle navigation
             login(data.token);
         } catch (err) {
             setError(err.message);
