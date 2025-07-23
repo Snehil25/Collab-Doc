@@ -1,4 +1,3 @@
-
 require('dotenv').config();
 
 const express = require('express');
@@ -10,22 +9,39 @@ const authMiddleware = require('./middleware/auth');
 const jwt = 'jsonwebtoken';
 
 const app = express();
-app.use(cors());
+
+const allowedOrigins = [
+  'http://localhost:3000', 
+  process.env.FRONTEND_URL 
+];
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) === -1) {
+      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+      return callback(new Error(msg), false);
+    }
+    return callback(null, true);
+  }
+};
+
+app.use(cors(corsOptions));
+
+
 app.use(express.json());
 
 const server = http.createServer(app);
 
 const io = new Server(server, {
-    cors: {
-        origin: "*",
-        methods: ["GET", "POST"]
-    }
+    cors: corsOptions
 });
 
-// --- API Routes ---
 app.use('/api/auth', require('./routes/auth'));
 
-// --- Protected Document Routes ---
+app.get('/', (req, res) => {
+  res.send('Backend server is live and running!');
+});
 
 app.get("/api/documents", authMiddleware, async (req, res) => {
     try {
@@ -60,7 +76,6 @@ app.post("/api/documents", authMiddleware, async (req, res) => {
     }
 });
 
-// POST to share a document with another user
 app.post("/api/documents/:id/share", authMiddleware, async (req, res) => {
     const { id: documentId } = req.params;
     const { email: collaboratorEmail } = req.body;
@@ -126,8 +141,6 @@ app.post("/api/documents/:id/share", authMiddleware, async (req, res) => {
     }
 });
 
-
-// --- Socket.IO Real-time Logic with Auth ---
 io.use((socket, next) => {
     const token = socket.handshake.auth.token;
     if (!token) return next(new Error('Authentication error: No token provided'));
