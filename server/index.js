@@ -13,32 +13,32 @@ const app = express();
 
 const allowedOrigins = [
   'http://localhost:3000',
-  'https://collab-doc-snehils-projects-4954fa41.vercel.app'
+  'https://collab-doc-snehils-projects-4954fa41.vercel.app' // production
 ];
 
 const corsOptions = {
   origin: (origin, callback) => {
     console.log("Incoming request origin:", origin);
 
-    if (!origin) return callback(null, true);
+    if (!origin) return callback(null, true); // allow server-to-server or curl
 
-    // Allow all *.vercel.app subdomains
-    if (
-        allowedOrigins.includes(origin) ||
-        origin.endsWith('.snehils-projects-4954fa41.vercel.app')
-        )
-        {
+    const isAllowed =
+      allowedOrigins.includes(origin) ||
+      origin.endsWith('.vercel.app'); // ✅ allow all preview deploys
+
+    if (isAllowed) {
       return callback(null, true);
     }
 
     const msg = `CORS error: ${origin} not allowed`;
     console.error(msg);
     return callback(new Error(msg), false);
-  }
+  },
+  credentials: true // if you're using cookies or auth headers
 };
 
-
 app.use(cors(corsOptions));
+
 
 
 app.use(express.json());
