@@ -185,11 +185,13 @@ io.on("connection", (socket) => {
             return;
             }
 
-            const { data: docContent, error: contentError } = await supabase
+           const { data: docContent, error: contentError } = await supabase
             .from('documents')
             .select('content, history')
-            .eq('id', documentId)
+            .eq('id', documentId?.toString().trim())
             .single();
+
+
 
             if (contentError) throw new Error("Fetch content error: " + contentError.message);
             if (!docContent) throw new Error("Document not found");
@@ -213,8 +215,9 @@ io.on("connection", (socket) => {
             const { data: currentDoc, error: fetchError } = await supabase
             .from('documents')
             .select('history')
-            .eq('id', documentId)
+            .eq('id', documentId?.toString().trim())
             .single();
+
 
             if (fetchError) throw new Error("Fetch error: " + fetchError.message);
             if (!currentDoc) throw new Error("Document not found for saving");
@@ -230,7 +233,8 @@ io.on("connection", (socket) => {
                 history,
                 updated_at: new Date().toISOString()
             })
-            .eq('id', documentId);
+            .eq('id', documentId?.toString().trim());
+
 
             if (updateError) throw new Error("Update failed: " + updateError.message);
 
