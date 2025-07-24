@@ -58,7 +58,7 @@ To run this project on your local machine, follow these steps.
 ### 1. Clone the Repository
 
 ```bash
-git clone <your-github-repository-url>
+git clone https://github.com/Snehil25/Collab-Doc
 cd Collab-Doc
 ```
 
