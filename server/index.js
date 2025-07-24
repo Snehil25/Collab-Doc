@@ -1,5 +1,3 @@
-// server/index.js (FINAL VERSION with debugging CORS)
-
 require('dotenv').config();
 
 const express = require('express');
@@ -12,24 +10,29 @@ const jwt = 'jsonwebtoken';
 
 const app = express();
 
-// --- DEBUGGING CORS Configuration ---
-// This temporarily allows requests from ANY origin.
-// This helps us diagnose if the problem is CORS or something else.
-console.log("CORS is configured to allow all origins for debugging.");
-app.use(cors()); 
-// --- End of DEBUGGING CORS Configuration ---
+// --- CORS Configuration ---
+const allowedOrigins = [
+  'http://localhost:3000',
+  process.env.FRONTEND_URL
+];
 
+const corsOptions = {
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('The CORS policy for this site does not allow access from the specified Origin.'));
+    }
+  }
+};
 
+app.use(cors(corsOptions));
 app.use(express.json());
 
 const server = http.createServer(app);
 
 const io = new Server(server, {
-    // Also apply a wide-open CORS policy to Socket.IO for debugging
-    cors: {
-      origin: "*",
-      methods: ["GET", "POST"]
-    }
+    cors: corsOptions
 });
 
 // --- API Routes ---
@@ -39,24 +42,26 @@ app.get('/', (req, res) => {
   res.send('Backend server is live and running!');
 });
 
-// ... The rest of your index.js file remains exactly the same ...
-// (Protected Document Routes, Socket.IO Logic, etc.)
-
-// GET all documents for the authenticated user
 app.get("/api/documents", authMiddleware, async (req, res) => {
     try {
         const { data, error } = await supabase.rpc('get_documents_for_user', {
             user_id_param: req.user.id
         });
         if (error) throw error;
-        res.json(data);
+        // We only send minimal data to the dashboard
+        const dashboardData = data.map(doc => ({
+            id: doc.id,
+            updated_at: doc.updated_at,
+            owner_email: doc.owner_email
+        }));
+        res.json(dashboardData);
     } catch (err) {
         console.error("Error fetching documents:", err);
         res.status(500).json({ error: "Failed to fetch documents" });
     }
 });
 
-// POST to create a new document for the authenticated user
+// ... other API routes are unchanged ...
 app.post("/api/documents", authMiddleware, async (req, res) => {
     try {
         const defaultValue = "";
@@ -77,7 +82,6 @@ app.post("/api/documents", authMiddleware, async (req, res) => {
     }
 });
 
-// POST to share a document with another user
 app.post("/api/documents/:id/share", authMiddleware, async (req, res) => {
     const { id: documentId } = req.params;
     const { email: collaboratorEmail } = req.body;
@@ -125,6 +129,9 @@ app.post("/api/documents/:id/share", authMiddleware, async (req, res) => {
     }
 });
 
+
+// --- Socket.IO Logic with Centralized Data Fetching ---
+
 io.use((socket, next) => {
     const token = socket.handshake.auth.token;
     if (!token) return next(new Error('Authentication error: No token provided'));
@@ -142,22 +149,24 @@ io.on("connection", (socket) => {
 
     socket.on("get-document", async (documentId) => {
         try {
+            // Use the single, trusted RPC function to get all data and check permissions
             const { data, error } = await supabase.rpc('get_documents_for_user', {
                 user_id_param: socket.user.id
             });
             if (error) throw error;
 
-            const hasAccess = data.some(doc => doc.id === documentId);
-            if (!hasAccess) {
+            const documentData = data.find(doc => doc.id === documentId);
+            if (!documentData) {
                 return socket.emit('auth-error', { message: 'Permission denied.' });
             }
             
-            const { data: docContent, error: contentError } = await supabase
-                .from('documents').select('content, history').eq('id', documentId).single();
-            if (contentError) throw contentError;
-
             socket.join(documentId);
-            socket.emit("load-document", docContent);
+            // Send the content and history we got from the RPC function
+            socket.emit("load-document", { 
+                content: documentData.content, 
+                history: documentData.history 
+            });
+
         } catch (err) {
             console.error(`[ERROR] Failed to get document ${documentId} for user ${socket.user.email}.`);
             console.error('Error Details:', err);
@@ -166,26 +175,28 @@ io.on("connection", (socket) => {
 
     socket.on("save-document", async ({ documentId, content }) => {
         try {
-            const { data, error: rpcError } = await supabase.rpc('get_documents_for_user', {
+            // First, use the trusted RPC to get the current history and verify access
+            const { data, error } = await supabase.rpc('get_documents_for_user', {
                 user_id_param: socket.user.id
             });
-            if (rpcError) throw rpcError;
-            if (!data.some(doc => doc.id === documentId)) {
+            if (error) throw error;
+
+            const documentData = data.find(doc => doc.id === documentId);
+            if (!documentData) {
                 return socket.emit('auth-error', { message: 'Permission denied to save.' });
             }
 
-            const { data: currentDoc, error: fetchError } = await supabase
-                .from('documents').select('history').eq('id', documentId).single();
-            if (fetchError) throw fetchError;
-
-            let history = currentDoc.history || [];
+            let history = documentData.history || [];
             history.unshift(content);
             if (history.length > 20) history = history.slice(0, 20);
 
-            await supabase
+            // Now, perform the update. This is allowed by RLS because the user has access.
+            const { error: updateError } = await supabase
                 .from('documents')
                 .update({ content: content, history: history, updated_at: new Date().toISOString() })
                 .eq('id', documentId);
+            
+            if (updateError) throw updateError;
             
             io.in(documentId).emit("document-saved", { history });
         } catch (err) {
