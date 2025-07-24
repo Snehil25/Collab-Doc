@@ -1,3 +1,5 @@
+// server/index.js (FINAL VERSION with generalized CORS)
+
 require('dotenv').config();
 
 const express = require('express');
@@ -13,16 +15,25 @@ const app = express();
 // --- CORS Configuration ---
 const allowedOrigins = [
   'http://localhost:3000',
-  process.env.FRONTEND_URL
+  process.env.FRONTEND_URL // Your main production URL
 ];
 
 const corsOptions = {
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(new Error('The CORS policy for this site does not allow access from the specified Origin.'));
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+
+    // Check if the origin is in our allowed list or is a Vercel preview URL
+    const isAllowed =
+      allowedOrigins.includes(origin) ||
+      origin.endsWith('.vercel.app');
+
+    if (isAllowed) {
+      return callback(null, true);
     }
+
+    const msg = `The CORS policy for this site does not allow access from the specified Origin: ${origin}`;
+    return callback(new Error(msg), false);
   }
 };
 
@@ -42,13 +53,13 @@ app.get('/', (req, res) => {
   res.send('Backend server is live and running!');
 });
 
+// ... The rest of your index.js file remains exactly the same ...
 app.get("/api/documents", authMiddleware, async (req, res) => {
     try {
         const { data, error } = await supabase.rpc('get_documents_for_user', {
             user_id_param: req.user.id
         });
         if (error) throw error;
-        // We only send minimal data to the dashboard
         const dashboardData = data.map(doc => ({
             id: doc.id,
             updated_at: doc.updated_at,
@@ -61,7 +72,6 @@ app.get("/api/documents", authMiddleware, async (req, res) => {
     }
 });
 
-// ... other API routes are unchanged ...
 app.post("/api/documents", authMiddleware, async (req, res) => {
     try {
         const defaultValue = "";
@@ -129,9 +139,6 @@ app.post("/api/documents/:id/share", authMiddleware, async (req, res) => {
     }
 });
 
-
-// --- Socket.IO Logic with Centralized Data Fetching ---
-
 io.use((socket, next) => {
     const token = socket.handshake.auth.token;
     if (!token) return next(new Error('Authentication error: No token provided'));
@@ -149,7 +156,6 @@ io.on("connection", (socket) => {
 
     socket.on("get-document", async (documentId) => {
         try {
-            // Use the single, trusted RPC function to get all data and check permissions
             const { data, error } = await supabase.rpc('get_documents_for_user', {
                 user_id_param: socket.user.id
             });
@@ -161,7 +167,6 @@ io.on("connection", (socket) => {
             }
             
             socket.join(documentId);
-            // Send the content and history we got from the RPC function
             socket.emit("load-document", { 
                 content: documentData.content, 
                 history: documentData.history 
@@ -175,7 +180,6 @@ io.on("connection", (socket) => {
 
     socket.on("save-document", async ({ documentId, content }) => {
         try {
-            // First, use the trusted RPC to get the current history and verify access
             const { data, error } = await supabase.rpc('get_documents_for_user', {
                 user_id_param: socket.user.id
             });
@@ -190,7 +194,6 @@ io.on("connection", (socket) => {
             history.unshift(content);
             if (history.length > 20) history = history.slice(0, 20);
 
-            // Now, perform the update. This is allowed by RLS because the user has access.
             const { error: updateError } = await supabase
                 .from('documents')
                 .update({ content: content, history: history, updated_at: new Date().toISOString() })
